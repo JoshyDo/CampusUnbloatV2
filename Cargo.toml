@@ -1,0 +1,16 @@
+[workspace]
+members = ["server", "shared", "web", "mensa"]
+default-members = ["server"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-only"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
+[profile.release.package.campusunbloat-web]
+strip = "debuginfo"

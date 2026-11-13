@@ -1,0 +1,10 @@
+/target/
+/web/dist/
+/mensa/meals.sqlite
+/meals.sqlite
+*.sqlite-journal
+.env
+.env.*
+!.env.example
+/remember.key
+*.har
