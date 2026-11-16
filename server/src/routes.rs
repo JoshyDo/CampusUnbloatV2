@@ -24,6 +24,10 @@ struct LocalOrigin {
     port: u16,
     content_security_policy: HeaderValue,
     secure_cookies: bool,
+    /// An additional host (e.g. `campus.example.com`) that is allowed in the
+    /// `Host`/`Origin` headers, for setups hosted behind a reverse proxy
+    /// under a real domain. Configured via `CAMPUSUNBLOAT_ALLOWED_HOST`.
+    allowed_host: Option<String>,
 }
 
 pub fn content_security_policy(web_dir: &Path) -> Result<HeaderValue> {
@@ -91,6 +95,7 @@ pub fn app(
                 port,
                 content_security_policy,
                 secure_cookies: std::env::var_os("CAMPUSUNBLOAT_SECURE_COOKIES").is_some(),
+                allowed_host: std::env::var("CAMPUSUNBLOAT_ALLOWED_HOST").ok(),
             },
             local_only,
         ))
@@ -104,7 +109,11 @@ async fn local_only(State(local): State<LocalOrigin>, request: Request, next: Ne
         .unwrap_or("");
     let is_local_host = host.eq_ignore_ascii_case(&format!("localhost:{}", local.port))
         || host.eq_ignore_ascii_case(&format!("127.0.0.1:{}", local.port));
-    if !is_local_host {
+    let is_allowed_host = local
+        .allowed_host
+        .as_deref()
+        .is_some_and(|allowed| host.eq_ignore_ascii_case(allowed));
+    if !is_local_host && !is_allowed_host {
         return (StatusCode::FORBIDDEN, "Ungültiger Host.").into_response();
     }
     if !matches!(
@@ -116,7 +125,12 @@ async fn local_only(State(local): State<LocalOrigin>, request: Request, next: Ne
             .get(header::ORIGIN)
             .and_then(|value| value.to_str().ok())
             .unwrap_or("");
-        if !origin.eq_ignore_ascii_case(&format!("http://{host}")) {
+        // Accept either scheme: a reverse proxy may terminate TLS and forward
+        // to this server over plain HTTP, while the browser's Origin header
+        // still reflects the public HTTPS URL the user actually visited.
+        let origin_matches = origin.eq_ignore_ascii_case(&format!("http://{host}"))
+            || origin.eq_ignore_ascii_case(&format!("https://{host}"));
+        if !origin_matches {
             return (StatusCode::FORBIDDEN, "Ungültiger Ursprung.").into_response();
         }
     }
@@ -189,6 +203,24 @@ mod tests {
         assert_eq!(
             response.headers()[header::STRICT_TRANSPORT_SECURITY],
             "max-age=31536000; includeSubDomains"
+        );
+    }
+
+    #[tokio::test]
+    async fn allowed_host_can_be_configured_for_hosted_deployments() {
+        let request = Request::builder()
+            .uri("/api/session")
+            .header(header::HOST, "campus.example.com")
+            .body(Body::empty())
+            .unwrap();
+        // SAFETY: this test is the only one reading CAMPUSUNBLOAT_ALLOWED_HOST and
+        // restores it immediately after building the router.
+        unsafe { std::env::set_var("CAMPUSUNBLOAT_ALLOWED_HOST", "campus.example.com") };
+        let hosted_app = test_app();
+        unsafe { std::env::remove_var("CAMPUSUNBLOAT_ALLOWED_HOST") };
+        assert_eq!(
+            hosted_app.oneshot(request).await.unwrap().status(),
+            StatusCode::UNAUTHORIZED
         );
     }
 

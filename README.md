@@ -121,7 +121,10 @@ Mensa-Anfragen gehen an das Studierendenwerk Leipzig und OpenMensa.
   Skripte, kein Nachladen von Drittanbieter-Code.
 - **Host-/Origin-Prüfung:** Anfragen mit fremdem `Host`-Header werden mit
   403 abgelehnt; schreibende Anfragen (POST) zusätzlich, wenn der
-  `Origin`-Header nicht zum eigenen Host passt (CSRF-Schutz).
+  `Origin`-Header nicht zum eigenen Host passt (CSRF-Schutz). Für Hosting
+  unter einer echten Domain muss diese über `CAMPUSUNBLOAT_ALLOWED_HOST`
+  freigeschaltet werden (zusätzlich zu `localhost`/`127.0.0.1`, die immer
+  erlaubt bleiben).
 - **Rate-Limiting:** Login ist auf 10 Versuche pro Minute begrenzt, parallel
   höchstens 64 Sitzungen.
 - **Remember-Key:** Die Datei `remember.key` wird unter Unix nur für den
